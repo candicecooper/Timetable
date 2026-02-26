@@ -290,12 +290,25 @@ if current:
       </div>
     </div>""", unsafe_allow_html=True)
 
-    # Inline PDF viewer
-    st.markdown(f"""
-    <div style="border:1px solid var(--navy-border);border-radius:var(--radius);overflow:hidden;margin-bottom:12px;">
-      <iframe src="data:application/pdf;base64,{b64}"
-        width="100%" height="780px" style="border:none;display:block;"></iframe>
-    </div>""", unsafe_allow_html=True)
+    # Inline PDF viewer using blob URL (works in Edge, Chrome, Safari)
+    st.components.v1.html(f"""
+    <div style="border:1px solid #c5d3e0;border-radius:12px;overflow:hidden;margin-bottom:12px;">
+      <iframe id="pdf-viewer" width="100%" height="780px" style="border:none;display:block;"></iframe>
+    </div>
+    <script>
+      (function() {{
+        var b64 = "{b64}";
+        var binary = atob(b64);
+        var bytes = new Uint8Array(binary.length);
+        for (var i = 0; i < binary.length; i++) {{
+          bytes[i] = binary.charCodeAt(i);
+        }}
+        var blob = new Blob([bytes], {{type: 'application/pdf'}});
+        var url = URL.createObjectURL(blob);
+        document.getElementById('pdf-viewer').src = url;
+      }})();
+    </script>
+    """, height=810, scrolling=False)
 
     st.download_button(
         label=f"⬇  Download {filename}",
