@@ -1,7 +1,7 @@
 import streamlit as st
-import streamlit.components.v1 as components
 import base64
 from datetime import datetime, timezone
+from io import BytesIO
 
 st.set_page_config(page_title="CLC Timetable", page_icon="📅", layout="wide", initial_sidebar_state="collapsed")
 
@@ -46,6 +46,15 @@ def fmt_date(iso):
     except:
         return iso or ""
 
+def pdf_to_images(pdf_bytes):
+    """Convert PDF bytes to list of PIL images using pdf2image."""
+    try:
+        from pdf2image import convert_from_bytes
+        images = convert_from_bytes(pdf_bytes, dpi=150)
+        return images
+    except Exception as e:
+        return None
+
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Serif+Display&display=swap');
@@ -78,6 +87,8 @@ header{display:none!important}
 .stButton>button[kind="primary"]{background:var(--navy)!important;border-color:var(--navy)!important;color:white!important}
 .stDownloadButton>button{background:var(--navy)!important;color:white!important;border-radius:8px!important;font-weight:600!important;width:100%}
 div[data-testid="stExpander"]{border:1px solid var(--navy-border)!important;border-radius:var(--radius)!important}
+.timetable-img{width:100%;border-radius:0 0 12px 12px;display:block;}
+.page-divider{border:none;border-top:2px dashed var(--navy-border);margin:8px 0;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -109,10 +120,10 @@ if current:
 
     try:
         pdf_bytes = base64.b64decode(current["file_data"])
-        b64 = base64.b64encode(pdf_bytes).decode()
         has_pdf = True
     except:
         has_pdf = False
+        pdf_bytes = None
 
     st.markdown(f"""
     <div class="card-wrap">
@@ -126,20 +137,41 @@ if current:
     </div>""", unsafe_allow_html=True)
 
     if has_pdf:
-        components.html(f"""<!DOCTYPE html><html><body style="margin:0;padding:0;">
-  <iframe id="f" width="100%" height="780px" style="border:none;display:block;border-radius:0 0 12px 12px;"></iframe>
-  <script>
-    var b=atob("{b64}"),u=new Uint8Array(b.length);
-    for(var i=0;i<b.length;i++)u[i]=b.charCodeAt(i);
-    document.getElementById('f').src=URL.createObjectURL(new Blob([u],{{type:'application/pdf'}}));
-  </script>
-</body></html>""", height=790, scrolling=False)
+        # Convert PDF to images for universal browser compatibility
+        with st.spinner("Loading timetable..."):
+            images = pdf_to_images(pdf_bytes)
 
-        st.download_button(label=f"⬇  Download {filename}", data=pdf_bytes,
-                           file_name=filename, mime="application/pdf",
-                           use_container_width=True)
+        if images:
+            st.markdown('<div class="card-wrap">', unsafe_allow_html=True)
+            for i, img in enumerate(images):
+                # Convert PIL image to bytes
+                buf = BytesIO()
+                img.save(buf, format="PNG")
+                img_bytes = buf.getvalue()
+                img_b64 = base64.b64encode(img_bytes).decode()
+
+                if i > 0:
+                    st.markdown('<hr class="page-divider">', unsafe_allow_html=True)
+
+                st.markdown(
+                    f'<img src="data:image/png;base64,{img_b64}" class="timetable-img" alt="Timetable page {i+1}">',
+                    unsafe_allow_html=True
+                )
+            st.markdown('</div>', unsafe_allow_html=True)
+        else:
+            st.warning("⚠️ Could not render timetable as image. Please download below.")
+
+        # Always show download button
+        st.download_button(
+            label=f"⬇  Download {filename}",
+            data=pdf_bytes,
+            file_name=filename,
+            mime="application/pdf",
+            use_container_width=True
+        )
     else:
         st.warning("Could not load timetable data — please ask admin to re-upload.")
+
 else:
     st.markdown("""<div class="card-wrap"><div class="no-tt">
       <div class="no-tt-icon">📅</div>
