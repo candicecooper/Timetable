@@ -2,3 +2,5 @@ streamlit
 supabase
 pdf2image
 Pillow
+0PyMuPDF>=1.23.0
+
