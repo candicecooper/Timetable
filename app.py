@@ -291,6 +291,112 @@ st.markdown(f"""
 
 st.markdown('<div class="main-wrap">', unsafe_allow_html=True)
 
+# ── Inline Admin Bar ──────────────────────────────────────────────────────────
+if not st.session_state.admin_authed:
+    admin_col, login_col = st.columns([6, 1])
+    with login_col:
+        if st.button("🔐 Admin", use_container_width=True, key="show_admin_btn"):
+            st.session_state["show_admin_login"] = not st.session_state.get("show_admin_login", False)
+            st.rerun()
+
+    if st.session_state.get("show_admin_login", False):
+        st.markdown("""
+        <div style="background:#eef2f7;border:1.5px solid #c5d3e0;border-radius:10px;
+        padding:1rem 1.25rem;margin-bottom:1rem;">
+        <div style="font-size:0.8rem;font-weight:700;color:#1a2e44;margin-bottom:0.6rem;">
+        🔐 Admin Login — Upload New Timetable</div>
+        </div>""", unsafe_allow_html=True)
+        lc1, lc2, lc3 = st.columns([3, 1, 1])
+        with lc1:
+            admin_pw = st.text_input("Password", type="password", key="admin_pw_inline",
+                                     label_visibility="collapsed", placeholder="Enter admin password…")
+        with lc2:
+            if st.button("Login", type="primary", use_container_width=True, key="admin_login_btn"):
+                if verify_admin(admin_pw):
+                    st.session_state.admin_authed = True
+                    st.session_state.show_admin_login = False
+                    st.rerun()
+                else:
+                    st.error("Incorrect password.")
+        with lc3:
+            if st.button("Cancel", use_container_width=True, key="admin_cancel"):
+                st.session_state.show_admin_login = False
+                st.rerun()
+
+else:
+    # ── Upload panel (shown inline at top when logged in) ──
+    st.markdown("""
+    <div style="background:linear-gradient(90deg,#1a2e44,#2d4f72);border-radius:12px;
+    padding:1rem 1.25rem;margin-bottom:1.25rem;">
+    <div style="font-size:0.9rem;font-weight:700;color:white;margin-bottom:0.75rem;">
+    📤 Upload New Timetable</div>
+    </div>""", unsafe_allow_html=True)
+
+    with st.form("upload_form_top", clear_on_submit=False):
+        col_prog, col_lbl = st.columns([1, 2])
+        with col_prog:
+            prog_choice = st.selectbox("Program", options=PROGRAMS,
+                                       format_func=lambda p: PROGRAM_LABELS[p])
+        with col_lbl:
+            lbl = st.text_input("Label", placeholder="e.g. Term 1 · Week 6 · 2 Mar 2026")
+
+        file = st.file_uploader("Choose PDF", type=["pdf"], label_visibility="collapsed")
+
+        uc1, uc2 = st.columns(2)
+        with uc1:
+            submitted = st.form_submit_button("✅ Upload & Set as Current",
+                                              type="primary", use_container_width=True)
+        with uc2:
+            logout = st.form_submit_button("🚪 Logout Admin", use_container_width=True)
+
+        if submitted:
+            if not file:
+                st.error("Please choose a PDF file.")
+            elif not lbl.strip():
+                st.error("Please add a label.")
+            else:
+                file.seek(0)
+                raw = file.read()
+                b64data = base64.b64encode(raw).decode("utf-8")
+                if save_timetable(file.name, b64data, lbl.strip(), prog_choice):
+                    st.success(f"✅ {PROGRAM_LABELS[prog_choice]} timetable updated — {lbl.strip()}")
+                    st.cache_resource.clear()
+                    st.rerun()
+        if logout:
+            st.session_state.admin_authed = False
+            st.rerun()
+
+    # ── Version history with delete ──
+    with st.expander("🗂️ Version History & Delete Old Versions"):
+        for program in PROGRAMS:
+            all_tt = get_all_timetables(program)
+            if not all_tt:
+                continue
+            prog_label_str = PROGRAM_LABELS[program]
+            st.markdown(f"**{prog_label_str}**")
+            for i, tt in enumerate(all_tt):
+                row_id   = tt.get("id")
+                tt_label = tt.get("label") or tt.get("filename", "")
+                tt_meta  = f"Uploaded {fmt_date(tt.get('uploaded_at', ''))} · {tt.get('filename', '')}"
+                is_current = (i == 0)
+                col_info, col_del = st.columns([5, 1])
+                with col_info:
+                    badge = " ✅ Current" if is_current else ""
+                    st.markdown(f'<div style="font-size:0.82rem;font-weight:600;color:#1a2e44;">📄 {tt_label}{badge}</div>'
+                                f'<div style="font-size:0.72rem;color:#6b7f94;">{tt_meta}</div>',
+                                unsafe_allow_html=True)
+                with col_del:
+                    if not is_current:
+                        if st.button("🗑", key=f"del_{row_id}", help="Delete this version"):
+                            if delete_timetable(row_id):
+                                st.success("Deleted.")
+                                st.rerun()
+                    else:
+                        st.markdown("<div style='font-size:11px;color:#9aa5b4;text-align:center;padding-top:8px;'>active</div>",
+                                    unsafe_allow_html=True)
+
+st.markdown("---")
+
 # ── Helper: render one program's timetable ────────────────────────────────────
 def render_timetable_view(program: str):
     current = get_timetable(program)
@@ -365,102 +471,5 @@ for tab, program in zip(tabs, PROGRAMS):
     with tab:
         render_timetable_view(program)
 
-
-# ── Admin section ─────────────────────────────────────────────────────────────
-st.markdown('<div class="section-label">🔐 Admin</div>', unsafe_allow_html=True)
-
-if not st.session_state.admin_authed:
-    with st.expander("Admin Login"):
-        with st.form("admin_login"):
-            pw = st.text_input(
-                "Admin password", type="password",
-                label_visibility="collapsed", placeholder="Enter admin password…",
-            )
-            if st.form_submit_button("Login", type="primary"):
-                if verify_admin(pw):
-                    st.session_state.admin_authed = True
-                    st.rerun()
-                else:
-                    st.error("Incorrect password.")
-else:
-    # ── Upload panel ──
-    st.markdown('<div class="admin-panel">', unsafe_allow_html=True)
-    st.markdown("### 📤 Upload New Timetable")
-
-    with st.form("upload_form", clear_on_submit=False):
-        col_prog, col_lbl = st.columns([1, 2])
-        with col_prog:
-            prog_choice = st.selectbox(
-                "Program",
-                options=PROGRAMS,
-                format_func=lambda p: PROGRAM_LABELS[p],
-            )
-        with col_lbl:
-            lbl = st.text_input("Label", placeholder="e.g. Term 1 · Week 6 · 2 Mar 2026")
-
-        file = st.file_uploader("Choose PDF", type=["pdf"], label_visibility="collapsed")
-
-        c1, c2 = st.columns(2)
-        with c1:
-            submitted = st.form_submit_button(
-                "✓ Upload & Set as Current", type="primary", use_container_width=True
-            )
-        with c2:
-            logout = st.form_submit_button("Logout", use_container_width=True)
-
-        if submitted:
-            if not file:
-                st.error("Please choose a PDF file.")
-            elif not lbl.strip():
-                st.error("Please add a label.")
-            else:
-                file.seek(0)
-                raw    = file.read()
-                b64data = base64.b64encode(raw).decode("utf-8")
-                if save_timetable(file.name, b64data, lbl.strip(), prog_choice):
-                    st.success(f"✅ {PROGRAM_LABELS[prog_choice]} timetable updated — {lbl.strip()}")
-                    st.rerun()
-        if logout:
-            st.session_state.admin_authed = False
-            st.rerun()
-
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    # ── Version history with delete ──
-    for program in PROGRAMS:
-        all_tt = get_all_timetables(program)
-        if not all_tt:
-            continue
-
-        prog_label = PROGRAM_LABELS[program]
-        st.markdown(
-            f'<div class="section-label">🗂 {prog_label} — Version History</div>',
-            unsafe_allow_html=True,
-        )
-
-        for i, tt in enumerate(all_tt):
-            row_id   = tt.get("id")
-            tt_label = tt.get("label") or tt.get("filename", "")
-            tt_meta  = f"Uploaded {fmt_date(tt.get('uploaded_at', ''))} · {tt.get('filename', '')}"
-            is_current = (i == 0)
-
-            col_info, col_del = st.columns([5, 1])
-            with col_info:
-                badge = '<span class="badge-green">Current</span>' if is_current else ""
-                st.markdown(f"""
-                <div class="history-row">
-                  <div>
-                    <div class="history-label">📄 {tt_label} {badge}</div>
-                    <div class="history-meta">{tt_meta}</div>
-                  </div>
-                </div>""", unsafe_allow_html=True)
-            with col_del:
-                if not is_current:
-                    if st.button("🗑", key=f"del_{row_id}", help="Delete this version"):
-                        if delete_timetable(row_id):
-                            st.success("Deleted.")
-                            st.rerun()
-                else:
-                    st.markdown("<div style='padding:10px 0;text-align:center;color:#9aa5b4;font-size:11px'>active</div>", unsafe_allow_html=True)
 
 st.markdown('</div>', unsafe_allow_html=True)
