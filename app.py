@@ -48,12 +48,13 @@ def get_client():
     from supabase import create_client
     return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 
-PROGRAMS = ["General", "JP", "PY", "SY"]
+PROGRAMS = ["General", "JP", "PY", "SY", "SSO"]
 PROGRAM_LABELS = {
     "General": "📋 All Staff",
     "JP":      "🟢 Junior Primary",
     "PY":      "🔵 Primary Years",
     "SY":      "🟣 Senior Years",
+    "SSO":     "🟠 SSO Support",
 }
 
 def get_timetable(program: str):
