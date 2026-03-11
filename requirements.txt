@@ -2,5 +2,5 @@ streamlit
 supabase
 pdf2image
 Pillow
-pymupdf==1.24.11
+pymupdf==1.25.3
 
